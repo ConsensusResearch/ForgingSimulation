@@ -79,6 +79,6 @@ main  = do
     putStrLn "\n"
     putStrLn "Node Id : Self balance <-> Common chain lengths with other nodes: "
     let cc = commonChains ns
-    writeFile concat[outdir, "/commons"] cc
+    writeFile (concat [outdir, "/commons"]) cc
     putStrLn $ cc
     putStrLn "\n Cryptocurrency simulation has been finished"
