@@ -16,7 +16,7 @@ To compile you need:
    `sudo apt-get install cabal-install`
 
 3. ConfigFile package, which can be locally installed
-   `cabal install ConfigFile`
+   `cabal install ConfigFile SHA`
 
 4. Then run `compile.sh` shell-script for Linux to compile the sources
 

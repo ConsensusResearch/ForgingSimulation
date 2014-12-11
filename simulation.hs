@@ -239,7 +239,7 @@ generateTransactionsForNode td node network = node{unconfirmedTxs = unconfirmedT
     where
         gen = nodeGen td node
         ns = nodes network
-        amt = fst $ randomR (1 , (selfBalance node) `div` 20) gen
+        amt = fst $ randomR (1 , (selfBalance node) `div` 2) gen
         rcp = account $ ns !! (fst $ randomR (0, length ns - 1) gen)
         tstamp = timestamp td
         tx = Transaction{sender = account node, recipient = rcp, amount = amt, fee=1, txTimestamp = tstamp}
@@ -302,8 +302,8 @@ addInvestorNode sd network = case timestamp sd of
 
 
 systemTransform :: SimulationData -> Network -> Network
-systemTransform sd network = networkForge sd $ generateTransactions sd $
-            propagateLastBlock sd $ propagateTransactions sd $ downloadBlocksNetwork sd $
+systemTransform sd network = networkForge sd $ propagateTransactions sd $ generateTransactions sd $
+            propagateLastBlock sd $ downloadBlocksNetwork sd $
             dropConnections sd $ generateConnections sd $ addNode sd $ addInvestorNode sd network
 
 
