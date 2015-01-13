@@ -50,7 +50,7 @@ validate _ = True
 data Block =
     Block {
       -- need to move to LocalView
-      --  allTransactions :: [Transaction],
+      -- allTransactions :: [Transaction],
         transactions :: [Transaction],
         baseTarget :: Integer,
       -- theoretically need to move to LocalView  
@@ -110,36 +110,13 @@ formBlock prevBlock gen timestamp txs =
 type BlockChain = [Block]
 
 -- from the next to parent
-type BlockTree = Map.Map Block Block
-
--- check if pb isn't included
-updateNodeView :: Block -> Block -> Node -> Node
-updateNodeView pb b node = let view = localView node in 
-                       if (Map.notMember b $ blockTree view) then 
-                        if (Map.member pb $ blockTree view) || (isGenesis pb) then 
-                           let prBal = Map.findWithDefault Map.empty pb $ blockBalances view in
-                           let prTxs = Map.findWithDefault []        pb $ blockTransactions view in 
-                           let updView = view {blockTree      = Map.insert b pb $ blockTree view, 
-                              blockBalances     = Map.insert b (processBlock b prBal) $ blockBalances view,
-                              blockTransactions = Map.insert b (prTxs ++ (transactions b)) $ blockTransactions view} in
-                           let opb = addSortedBlock b (openBlocks node) in
-                           let bb' =  head opb in
-                           let oldbb = bestBlock node in
-                           let bb = if (totalDifficulty bb' >= totalDifficulty oldbb) then bb' else oldbb in
-                           node {localView = updView, pendingBlocks = (pb,b):(pendingBlocks node), 
-                                 openBlocks = opb, bestBlock = bb}
-                        -- need to add more logic when prevBlock not found - try to download it or whatever   
-                        else node   
-                       else                        
-                        node 
-                         
+type BlockTree = Map.Map Block Block    
 
 cumulativeDifficulty :: BlockChain -> Double
 cumulativeDifficulty chain = foldl (\cd b -> cd + (difficultyFunction $ baseTarget b)) 0 chain
 
 cumulativeNodeDifficulty :: Node -> Double
 cumulativeNodeDifficulty node = totalDifficulty $ bestBlock node
-
 
 -- type BlockTree = [BlockChain]
 
@@ -178,13 +155,24 @@ processBlock block priorBalances = appliedWithFees
         fees = sum (map fee txs)
         appliedWithFees = addMoney fees (generator block) txApplied
 
--- the order of arguments is changed to simplify later foldl's
--- changed (++) to (:) to save order of txs
 pushBlock :: Node -> Block -> Block -> Node
-pushBlock node pb bl = let view = localView node in
-      if Map.notMember bl (blockTree view) 
-      then updateNodeView pb bl node 
-      else node                  
+pushBlock node pb b =  let view = localView node in 
+                       if (Map.notMember b $ blockTree view) then 
+                        if (Map.member pb $ blockTree view) || (isGenesis pb) then 
+                           let prBal = Map.findWithDefault Map.empty pb $ blockBalances view in
+                           let prTxs = Map.findWithDefault []        pb $ blockTransactions view in 
+                           let updView = view {blockTree      = Map.insert b pb $ blockTree view, 
+                              blockBalances     = Map.insert b (processBlock b prBal) $ blockBalances view,
+                              blockTransactions = Map.insert b (prTxs ++ (transactions b)) $ blockTransactions view} in
+                           let opb = addSortedBlock b (openBlocks node) in
+                           let bb' =  head opb in
+                           let oldbb = bestBlock node in
+                           let bb = if (totalDifficulty bb' >= totalDifficulty oldbb) then bb' else oldbb in
+                           node {localView = updView, pendingBlocks = (pb,b):(pendingBlocks node), 
+                                 openBlocks = opb, bestBlock = bb}
+                        -- need to add more logic when prevBlock not found - try to download it or whatever   
+                        else node   
+                       else node                   
 
 pushBlocks :: Node -> [(Block, Block)] -> Node
 pushBlocks = foldl (\n (pb,b) -> pushBlock n pb b)
@@ -228,6 +216,10 @@ selfBalance node = let v = localView node in
                    accountBalance v (bestBlock node) (account node)
 
 
+accBalance :: Node -> Account -> Int
+accBalance node acc = let v = localView node in 
+                      accountBalance v (bestBlock node) acc
+
 calculateHit :: Block -> Account -> Integer
 calculateHit prevBlock acc = fromIntegral $ first8bytesAsNumber $ calcGenerationSignature prevBlock acc
 
@@ -252,17 +244,17 @@ addSortedBlock b lb@(b':bs) =  if ((totalDifficulty b) >= (totalDifficulty b')) 
 
 forgeBlock :: Block -> Node -> Timestamp -> Node
 forgeBlock pb node ts = 
-   let view = localView node in
+   let view  = localView node in
    let prTxs = Map.findWithDefault [] pb $ blockTransactions view in 
-   let txs = filter (\tx -> not $ elem tx prTxs) $ pendingTxs node in 
+   let txs  = filter (\tx -> notElem tx prTxs) $ pendingTxs node in 
    let acct = account node in 
    let effb = effectiveBalance view pb acct in
-   let hit = calculateHit pb acct in
+   let hit  = calculateHit pb acct in
    let checkHit = verifyHit hit pb ts effb in
    let openb = openBlocks node in
-   if checkHit then let newb = formBlock pb acct ts txs in                    
+      if checkHit then let newb = formBlock pb acct ts txs in                    
                         pushBlock node pb newb
-               else node {openBlocks = addSortedBlock pb openb}
+                  else node {openBlocks = addSortedBlock pb openb}
                     
                     
 splitBlocks :: Int -> [Block]  -> ([Block], [Block])

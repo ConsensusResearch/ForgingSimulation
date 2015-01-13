@@ -44,6 +44,11 @@ commonChainsNode n ns = show (let others = filter (/=n) ns in map (commonChainLe
 commonChains :: [Node] -> String
 commonChains ns = show $ map (\n -> concat[show $ nodeId n," : ",show $ selfBalance n ,"<->", commonChainsNode n ns]) ns
 
+nodeBalances :: Node -> [Node] -> String
+nodeBalances node ns = concat [show (nodeId node), "->" , show $ map (accBalance node) $ map account ns]
+
+allBalances :: [Node] -> String
+allBalances nodes = concat $ map (\n -> nodeBalances n nodes ++ "\n") nodes   
 
 main  = do
     putStrLn "Starting cryptocurrency simulation..."
@@ -76,9 +81,15 @@ main  = do
 
     putStrLn "Final balances(from self point of view):"
     putStrLn $ show $ map selfBalance ns
+
     putStrLn "\n"
     putStrLn "Node Id : Self balance <-> Common chain lengths with other nodes: "
     let cc = commonChains ns
     writeFile (concat [outdir, "/commons"]) cc
     putStrLn $ cc
+
+    let bb = allBalances ns
+    writeFile (concat [outdir, "/balances"]) bb
+    putStrLn $ bb
+
     putStrLn "\n Cryptocurrency simulation has been finished"

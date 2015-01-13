@@ -44,7 +44,7 @@ rescan = pushBlocks
 
 
 earlyInvestors :: [Account]
-earlyInvestors = map (\i -> generateAccount $ mkStdGen i) [0..20]
+earlyInvestors = map (\i -> generateAccount $ mkStdGen i) [0..19]
 
 
 godAccount :: Account
@@ -56,7 +56,7 @@ genesisBlock :: Block
 genesisBlock = block where
     amt = systemBalance `div` (length earlyInvestors)
     genesisTxs = map (\ acc -> Transaction {sender = godAccount, recipient = acc, amount = amt, fee = 0, txTimestamp = 0}) earlyInvestors
-    block = Block {transactions = genesisTxs,  blockTimestamp = 0, baseTarget = initialBaseTarget, totalDifficulty = 0.0, 
+    block = Block {transactions = genesisTxs,  blockTimestamp = 0, baseTarget = 100*initialBaseTarget, totalDifficulty = 0.0, 
                          generator = godAccount, generationSignature = B.replicate 64 0}
 
 
@@ -187,7 +187,7 @@ sendTransactionsOut :: SimulationData -> Node -> Network ->  Network
 sendTransactionsOut td node network = case randomNeighbour td node network of
                     Just neighbour -> let txsToSend = pendingTxs node in
                                       let otherTxs = pendingTxs neighbour in
-                                      let newTxs = filter (\tx -> not $ elem tx otherTxs) txsToSend in 
+                                      let newTxs = filter (\tx -> notElem tx otherTxs) txsToSend in 
                                       let updTxs = otherTxs ++ newTxs in
                                       updateNode neighbour {pendingTxs = updTxs} network
                     Nothing -> network
@@ -223,25 +223,26 @@ propagateLastBlocks sd network = foldl (sendBlocksOut sd) network (nodes network
 
 
 generateTransactionsForNode :: SimulationData -> Node -> Network -> Node
-generateTransactionsForNode sd node network = node {pendingTxs = tx:(pendingTxs node)}
-    where
-        gen = nodeGen sd node
-        ns = nodes network
-        amt = fst $ randomR (1 , (selfBalance node) `div` 2) gen
-        rcp = account $ ns !! (fst $ randomR (0, length ns - 1) gen)
-        tstamp = timestamp sd
-        tx = Transaction {sender = account node, recipient = rcp, amount = amt, fee = minFee, txTimestamp = tstamp}
-
+generateTransactionsForNode sd node network = 
+    if (timestamp sd < 1*(deadline sd) `div` 4) then
+        let gen = nodeGen sd node in
+        let ns = nodes network in
+        let amt = fst $ randomR (1 , (selfBalance node) `div` 2) gen in
+        let rcp = account $ ns !! (fst $ randomR (0, length ns - 1) gen) in
+        if (rcp /= account node) then 
+          let tstamp = timestamp sd in
+          let tx = Transaction {sender = account node, recipient = rcp, amount = amt, fee = minFee, txTimestamp = tstamp} in
+            node {pendingTxs = tx:(pendingTxs node)}
+        else node
+    else node
 
 generateTransactionsForNodes :: SimulationData -> [Node] -> Network -> [Node]
-generateTransactionsForNodes sd nonEmpty network = foldl (\ns n ->
+generateTransactionsForNodes sd nonEmpty network = map (\n ->
         let gen = nodeGen sd n in
         let r::Int = fst $ randomR (0, 10) gen in 
                 case r of
-                1 -> let updNode::Node = generateTransactionsForNode sd n network in 
-                     updNode:ns
-                _ -> n:ns
-    ) [] nonEmpty
+                1 -> generateTransactionsForNode sd n network                     
+                _ -> n) nonEmpty
 
 
 -- nodes rearrange every time !
