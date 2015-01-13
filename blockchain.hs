@@ -165,7 +165,7 @@ pushBlock node pb b =  let view = localView node in
                               blockBalances     = Map.insert b (processBlock b prBal) $ blockBalances view,
                               blockTransactions = Map.insert b (prTxs ++ (transactions b)) $ blockTransactions view} in
                            let opb = addSortedBlock b (openBlocks node) in
-                           let bb' =  head opb in
+                           let bb' = head opb in
                            let oldbb = bestBlock node in
                            let bb = if (totalDifficulty bb' >= totalDifficulty oldbb) then bb' else oldbb in
                            node {localView = updView, pendingBlocks = (pb,b):(pendingBlocks node), 
@@ -191,7 +191,7 @@ data Node =
     }  deriving (Show)
 
 nodeId :: Node -> Int
-nodeId node = fromIntegral $ first8bytesAsNumber $ publicKey $ account node
+nodeId node = accountId $ account node
 
 instance Eq Node where n1 == n2  = nodeId n1 == nodeId n2
 instance Ord Node where compare n1 n2 = compare (nodeId n1) (nodeId n2)
@@ -275,7 +275,12 @@ treeChain b t = if Map.member b t then
                   let pb = Map.findWithDefault b b t in
                            (treeChain pb t) ++ [b]
                 else [b]
-                                                           
+                                                                                                     
+nodeChain :: Block -> Node -> BlockChain
+nodeChain b node = let view = localView node in
+                   let tree = blockTree view in
+                   treeChain b tree
+
                       
 bestChain :: Node -> BlockChain
 bestChain node = let view = localView node in
@@ -289,23 +294,32 @@ commonChain chain1 chain2 = case (chain1, chain2) of
         (bl1:ct1, bl2:ct2) -> if bl1 == bl2 then bl1:(commonChain ct1 ct2) else []
         _ -> []
 
-
+-- Nodes are modifiyng !!! so map works wrong, changed [Node] to [Int]
 data Network =
     Network {
         nodes :: [Node],
-        connections :: Map.Map Node [Node] -- todo add latency(avg latency time), trust?
+        connections :: Map.Map Node [Int] -- todo add latency(avg latency time), trust?
     }  deriving (Show)
 
 
 outgoingConnections :: Network -> Node -> [Node]
-outgoingConnections system node = Map.findWithDefault [] node (connections system)
+outgoingConnections network node = let ids = Map.findWithDefault [] node (connections network) in
+                                   filter (\n -> elem (nodeId n) ids) (nodes network) 
 
+outgoingConnectionsIds :: Network -> Node -> [Int]
+outgoingConnectionsIds network node = Map.findWithDefault [] node (connections network)
+                                 
 
 updateNode :: Node -> Network -> Network
 updateNode nd network = network {nodes = ns}
-    where
+            where
+            ndId = nodeId nd
+            ns = map (\n -> if (nodeId n == ndId) then nd else n) (nodes network)
+
+--updateNode nd network = network {nodes = ns}
+--    where
       -- (==) for nodes as Ids 
-        ns = map (\n -> if (n == nd) then nd else n) (nodes network)
+--        ns = map (\n -> if (n == nd) then nd else n) (nodes network)
 
 
 --blockTree :: Network -> BlockTree

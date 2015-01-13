@@ -16,7 +16,7 @@ outChain chain = concat [chainInfo, diffInfo]
     where
         diffInfo = concat ["Cumulative difficulty: ", show $ cumulativeDifficulty chain]
         chainInfo = foldl (\s b -> concat [s, show $ blockTimestamp b, " -> ", show $ generator b, "--",
-                                            show $ blockId b ," -- ", show $ length $ transactions b, "\n "]) "" chain
+                                            show $ blockId b ," -- ", show $ baseTarget b, " -- ", show $ length $ transactions b, "\n "]) "" chain
 
 outChainNode :: Node -> String
 outChainNode node = outChain $ bestChain node
@@ -33,19 +33,20 @@ outConnection network = concat ps
     where
         cons = connections network
         ks = Map.keys cons
-        ps = map (\k -> concat [show $ nodeId $ k, " -> ", show $ map nodeId (Map.findWithDefault [] k cons), "\n "]) ks
+        ps = map (\k -> concat [show $ nodeId $ k, " -> ", show $ Map.findWithDefault [] k cons, "\n "]) ks
 
 commonChainLength :: Node -> Node -> Int
 commonChainLength n1 n2 = length $ commonChain (bestChain n1) (bestChain n2)
 
 commonChainsNode :: Node -> [Node] ->  String
-commonChainsNode n ns = show (let others = filter (/=n) ns in map (commonChainLength n) others)
+commonChainsNode n ns = show (let others = filter (\_ -> True) ns in map (commonChainLength n) others)
 
 commonChains :: [Node] -> String
 commonChains ns = show $ map (\n -> concat[show $ nodeId n," : ",show $ selfBalance n ,"<->", commonChainsNode n ns]) ns
 
 nodeBalances :: Node -> [Node] -> String
-nodeBalances node ns = concat [show (nodeId node), "->" , show $ map (accBalance node) $ map account ns]
+nodeBalances node ns = let bals =  map (accBalance node) $ map account ns in
+  concat [show (nodeId node), "->" , show $ (sum bals): bals]
 
 allBalances :: [Node] -> String
 allBalances nodes = concat $ map (\n -> nodeBalances n nodes ++ "\n") nodes   
