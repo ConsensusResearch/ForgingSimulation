@@ -15,17 +15,17 @@ outChain :: BlockChain -> String
 outChain chain = concat [chainInfo, diffInfo]
     where
         diffInfo = concat ["Cumulative difficulty: ", show $ cumulativeDifficulty chain]
-        chainInfo = foldl(\s b -> concat [s, show $ blockTimestamp b, " -> ",show $ generator b, "--",
+        chainInfo = foldl (\s b -> concat [s, show $ blockTimestamp b, " -> ", show $ generator b, "--",
                                             show $ blockId b ," -- ", show $ length $ transactions b, "\n "]) "" chain
 
 outChainNode :: Node -> String
-outChainNode node = outChain $ nodeChain $ localView node
+outChainNode node = outChain $ bestChain node
 
 
 outTxs :: Node -> String
 outTxs node = foldl(\s t -> concat [s, show t]) "" txs
     where
-        chain = nodeChain $ localView node
+        chain = bestChain node
         txs = concat $ map transactions $ tail chain
 
 outConnection :: Network -> String
@@ -36,7 +36,7 @@ outConnection network = concat ps
         ps = map (\k -> concat [show $ nodeId $ k, " -> ", show $ map nodeId (Map.findWithDefault [] k cons), "\n "]) ks
 
 commonChainLength :: Node -> Node -> Int
-commonChainLength n1 n2 = length $ commonChain (nodeChain $ localView n1)(nodeChain $ localView n2) []
+commonChainLength n1 n2 = length $ commonChain (bestChain n1) (bestChain n2)
 
 commonChainsNode :: Node -> [Node] ->  String
 commonChainsNode n ns = show (let others = filter (/=n) ns in map (commonChainLength n) others)
@@ -71,7 +71,7 @@ main  = do
     mapM_ (\i -> writeFile (concat [outdir, "/node", show i]) (show (ns !! i))) [0..(length ns - 1)]
     mapM_ (\i -> writeFile (concat [outdir, "/chain", show i]) (outChainNode $ ns !! i)) [0..(length ns - 1)]
     mapM_ (\i -> writeFile (concat [outdir, "/txs", show i]) (outTxs $ ns !! i)) [0..(length ns - 1)]
-    mapM_ (\i -> writeFile (concat [outdir, "/common", show i]) (outChain $ commonChain (nodeChain $ localView $ ns !! i) (nodeChain $ localView $ ns !! (i+1)) [] )) [0..(length ns - 2)]
+    mapM_ (\i -> writeFile (concat [outdir, "/common", show i]) (outChain $ commonChain (bestChain $ ns !! i) (bestChain $ ns !! (i+1)))) [0..(length ns - 2)]
 
 
     putStrLn "Final balances(from self point of view):"

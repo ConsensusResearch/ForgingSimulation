@@ -1,11 +1,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Blockchain.Simulation where
+import Constants
 import Blockchain.Structures
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Word as W
 import qualified Data.Random.List()
 import Data.Maybe
+import Data.List
 import System.Random
 import qualified Data.Map as Map
 
@@ -19,7 +21,7 @@ data SimulationData = SimulationData {
 }
 
 incTimestamp :: SimulationData -> SimulationData
-incTimestamp sd = sd{timestamp = t + 1} where t = timestamp sd
+incTimestamp sd = sd {timestamp = t + 1} where t = timestamp sd
 
 notExpired :: SimulationData -> Bool
 notExpired sd = (timestamp sd) < (deadline sd)
@@ -30,14 +32,12 @@ simpleGen sd = mkStdGen $ (simulationId sd) * (timestamp sd + 1)
 nodeGen :: SimulationData -> Node ->  StdGen
 nodeGen sd nd = mkStdGen $ (simulationId sd) * (timestamp sd + 1) * (nodeId nd)
 
-
-
-
 createNode :: Account -> Node
-createNode acc = Node{localView = genesisView, unconfirmedTxs=[], account=acc}
+createNode acc = Node {localView = genesisView, pendingTxs = [], pendingBlocks = [], openBlocks = [genesisBlock], bestBlock = genesisBlock, account = acc}
 
-rescan :: [Block] -> Node -> Node
-rescan chain node = pushBlocks (tail chain) node{localView = genesisView, unconfirmedTxs = []}
+rescan :: Node -> [(Block,Block)] -> Node
+rescan = pushBlocks 
+                              --{localView = genesisView, pendingTxs = [], pendingBlocks = [], openBlocks = [genesisBlock], bestBlock = genesisBlock} 
 
 
 -----------Bootstrapping functions----------------------
@@ -49,20 +49,21 @@ earlyInvestors = map (\i -> generateAccount $ mkStdGen i) [0..20]
 
 godAccount :: Account
 godAccount = Account {publicKey = B.pack[18, 89, -20, 33, -45, 26, 48, -119, -115, 124, -47, 96, -97, -128, -39, 102,
-                                        -117, 71, 120, -29, -39, 126, -108, 16, 68, -77, -97, 12, 68, -46, -27, 27]}
-
+                                        -117, 71, 120, -29, -39, 126, -108, 16, 68, -77, -97, 12, 68, -46, -27, 27], tfdepth = 1}
 
 
 genesisBlock :: Block
 genesisBlock = block where
     amt = systemBalance `div` (length earlyInvestors)
-    genesisTxs = map (\ acc -> Transaction{sender=godAccount, recipient=acc, amount = amt, fee=0, txTimestamp=0}) earlyInvestors
-    block = Block{transactions = genesisTxs, blockTimestamp = 0, baseTarget = maxBaseTarget,
+    genesisTxs = map (\ acc -> Transaction {sender = godAccount, recipient = acc, amount = amt, fee = 0, txTimestamp = 0}) earlyInvestors
+    block = Block {transactions = genesisTxs,  blockTimestamp = 0, baseTarget = initialBaseTarget, totalDifficulty = 0.0, 
                          generator = godAccount, generationSignature = B.replicate 64 0}
 
 
 genesisView :: LocalView
-genesisView = LocalView{balances = genBalances, nodeChain = [genesisBlock]}
+genesisView = LocalView {blockBalances = Map.singleton genesisBlock genBalances, 
+                         blockTree = Map.empty, 
+                         blockTransactions = Map.singleton genesisBlock (transactions genesisBlock)}
     where
         genBalances = processBlock genesisBlock initialBalances
         initialBalances = Map.singleton godAccount systemBalance
@@ -70,8 +71,6 @@ genesisView = LocalView{balances = genBalances, nodeChain = [genesisBlock]}
 
 genesisState :: Network
 genesisState = Network {nodes = [createNode $ head earlyInvestors], connections = Map.empty}
-
-
 
 
 -----------Helper functions----------------------
@@ -90,7 +89,7 @@ generatePK gen = randomByteString 32 gen
 
 
 accountByPK :: B.ByteString -> Account
-accountByPK pk = Account {publicKey=pk}
+accountByPK pk = Account {publicKey = pk, tfdepth = 1}
 
 generateAccount :: StdGen -> Account
 generateAccount gen = accountByPK $ generatePK gen
@@ -98,15 +97,12 @@ generateAccount gen = accountByPK $ generatePK gen
 
 -----------Simulating functions ----------------------
 
-
 --for now 1 node == 1 account
 addAccount :: Network -> Network
 addAccount _ = error "not impl"
 
-
-
 generateConnections :: SimulationData -> Network -> Network
-generateConnections sd network = network{connections = updCons} where
+generateConnections sd network = network {connections = updCons} where
     ns = nodes network
     nsCount = length ns
     cons = connections network
@@ -115,7 +111,7 @@ generateConnections sd network = network{connections = updCons} where
                 then
                     let gen = nodeGen sd n in
                     let rndNode = ns !! (fst $ randomR (0, nsCount - 1) gen) in
-                        if (nodeId rndNode /= nodeId n) && (not $ elem rndNode out)
+                        if (rndNode /=  n) && (not $ elem rndNode out)
                             then Map.insert n (out++[rndNode]) cs
                             else cs
                 else cs
@@ -130,7 +126,7 @@ dropConnections sd network = case (timestamp sd) `mod` 60 of
                             if (length out) > 10
                                 then Map.insert n (tail out) cs
                                 else cs ) cons (nodes network) in
-                    network{connections = updCons}
+                    network {connections = updCons}
             _ -> network
 
 
@@ -143,8 +139,6 @@ randomNeighbour sd node network = if nbcnt == 0 then Nothing
                                     nbcnt = length neighbours
 
 
-
-
 addNode :: SimulationData -> Network -> Network
 addNode sd initNetwork = case rnd  of
                             1 -> initNetwork {nodes = nodes initNetwork ++ [createNode $ generateAccount gen]}
@@ -153,24 +147,27 @@ addNode sd initNetwork = case rnd  of
                             gen = simpleGen sd
                             rnd::Int = fst $ randomR (0, addNodeAvgGap sd) gen
 
+makePairs :: BlockChain -> [(Block, Block)]
+makePairs [] = []
+makePairs [b] = []
+makePairs (b1:(b2:bs)) = (b1,b2):(makePairs (b2:bs))
 
-
-
+-- rewrite with trees !
 downloadBlocksFrom :: Node -> Node -> Network -> Network
 downloadBlocksFrom node otherNode network = updNetwork
-    where
-        chain = nodeChain $ localView node
-        otherChain = nodeChain $ localView otherNode
-        otherChainLength = length otherChain
-        updNetwork = if cumulativeDifficulty otherChain > cumulativeDifficulty chain -- todo: check NRS
-                                             then do
-                                                 let common = commonChain chain otherChain []
-                                                 let commonChainLength = length common
-                                                 let blocksNumToDl = min (otherChainLength - commonChainLength) maxBlocksFromPeer
-                                                 let newBlocks = drop commonChainLength $ take (commonChainLength+blocksNumToDl) otherChain
-                                                 let modifiedNode = rescan (common ++ newBlocks) node
-                                                 updateNode modifiedNode network
-                                             else network
+        where
+        chain = bestChain node
+        otherChain = bestChain otherNode        
+        updNetwork = if cumulativeNodeDifficulty otherNode > cumulativeNodeDifficulty node then 
+                       let common = commonChain chain otherChain in
+                       let otherChainLength = length otherChain in   
+                       let commonChainLength = length common in
+                       let blocksNumToDl = min (otherChainLength - commonChainLength) maxBlocksFromPeer in                                           
+                       let newBlocks = drop (commonChainLength-1) $ take (commonChainLength+blocksNumToDl) otherChain in
+                       -- not very efficient drops and takes if rescan, easier to rescan (take x otherChain)
+                       let modifiedNode = rescan node (makePairs newBlocks) in
+                       updateNode modifiedNode network                                             
+                     else network
 
 
 downloadBlocks :: SimulationData -> Node -> Network -> Network
@@ -185,98 +182,79 @@ downloadBlocks sd node network = resNetwork
 downloadBlocksNetwork :: SimulationData -> Network ->  Network
 downloadBlocksNetwork sd network = foldl (\nw n -> downloadBlocks sd n nw) network (nodes network)
 
-
 sendTransactionsOut :: SimulationData -> Node -> Network ->  Network
 sendTransactionsOut td node network = case randomNeighbour td node network of
-                    Just neighbour -> let txsToSend = unconfirmedTxs node in
-                                      let otherTxs = unconfirmedTxs neighbour in
-                                      let updNeighbourTxs = foldl (\txs tx -> if(elem tx txs) then txs else txs ++ [tx]) otherTxs txsToSend in
-                                      updateNode neighbour{unconfirmedTxs = updNeighbourTxs} network
+                    Just neighbour -> let txsToSend = pendingTxs node in
+                                      let otherTxs = pendingTxs neighbour in
+                                      let newTxs = filter (\tx -> not $ elem tx otherTxs) txsToSend in 
+                                      let updTxs = otherTxs ++ newTxs in
+                                      updateNode neighbour {pendingTxs = updTxs} network
                     Nothing -> network
 
 
-
+--it's probably no need to filter 
 propagateTransactions :: SimulationData -> Network ->  Network
-propagateTransactions sd network = foldl (\nws sndr -> sendTransactionsOut sd sndr nws) network senders
-            where senders = filter (\n -> (length $ unconfirmedTxs n) > 0) (nodes network)
+propagateTransactions sd network = foldl (\nws sndr -> sendTransactionsOut sd sndr nws) network (nodes network)
+           -- where senders = filter (\n -> (length $ pendingTxs n) > 0) (nodes network)
 
 
-
-
-sendBlockOut :: SimulationData -> Node -> Network -> Network
-sendBlockOut td node network  = resNetwork
+sendBlocksOut :: SimulationData -> Network -> Node -> Network
+sendBlocksOut sd network node = resNetwork
             where
-                block = lastNodeBlock node
+              -- maybe filter by timestamp?
+                blocks = pendingBlocks node
                 cons = outgoingConnections network node
                 clen = length cons
                 resNetwork = if clen == 0 then network
-                    else do
-                        let otherNode = cons !! (fst $ randomR (0, clen - 1) $ simpleGen td)
-                        let chain = nodeChain $ localView node
-                        let otherChain = nodeChain $ localView otherNode
-                        let prevId = blockId $ chain !! ((length chain)-2)
-                        let otherLastId = blockId $ last otherChain
-                        if (length chain >= 2) &&
-                           (otherLastId == prevId) &&
-                           (length chain == length otherChain +1) -- && (cumulativeDifficulty chain > cumulativeDifficulty otherChain)
-                                then updateNode (processIncomingBlock block otherNode) network
-                                else network
+                    else 
+                        let otherNode = cons !! (fst $ randomR (0, clen - 1) $ simpleGen sd) in                        
+                        let updNw = foldl (\nw (pb,b) -> updateNode (processIncomingBlock otherNode pb b) nw) network blocks in    
+                        updateNode (node {pendingBlocks = []}) updNw
+                       
 
-propagateLastBlock :: SimulationData -> Network -> Network
-propagateLastBlock sd network = foldl (\nw sndr -> sendBlockOut sd sndr nw) network senders
-    where
-        senders = filter (\n ->
-                let lastBl = lastNodeBlock n in
-                    (timestamp sd - blockTimestamp lastBl) < 15 && generator lastBl /= account n
-            ) (nodes network)
-
-
-
+propagateLastBlocks :: SimulationData -> Network -> Network
+propagateLastBlocks sd network = foldl (sendBlocksOut sd) network (nodes network)
+  --  where
+  --      senders = filter (\n ->
+  --              let lastBl = lastNodeBlock n in
+  --                  (timestamp sd - blockTimestamp lastBl) < 15 && generator lastBl /= account n
+  --          ) (nodes network)
 
 
 generateTransactionsForNode :: SimulationData -> Node -> Network -> Node
-generateTransactionsForNode td node network = node{unconfirmedTxs = unconfirmedTxs node ++ [tx]}
+generateTransactionsForNode sd node network = node {pendingTxs = tx:(pendingTxs node)}
     where
-        gen = nodeGen td node
+        gen = nodeGen sd node
         ns = nodes network
         amt = fst $ randomR (1 , (selfBalance node) `div` 2) gen
         rcp = account $ ns !! (fst $ randomR (0, length ns - 1) gen)
-        tstamp = timestamp td
-        tx = Transaction{sender = account node, recipient = rcp, amount = amt, fee=1, txTimestamp = tstamp}
-
+        tstamp = timestamp sd
+        tx = Transaction {sender = account node, recipient = rcp, amount = amt, fee = minFee, txTimestamp = tstamp}
 
 
 generateTransactionsForNodes :: SimulationData -> [Node] -> Network -> [Node]
 generateTransactionsForNodes sd nonEmpty network = foldl (\ns n ->
         let gen = nodeGen sd n in
-        let r::Int = fst $ randomR (0, 10) gen in case r of
-                1 -> let updNode::Node = generateTransactionsForNode sd n network in ns ++ [updNode]
-                _ -> ns ++ [n]
+        let r::Int = fst $ randomR (0, 10) gen in 
+                case r of
+                1 -> let updNode::Node = generateTransactionsForNode sd n network in 
+                     updNode:ns
+                _ -> n:ns
     ) [] nonEmpty
 
 
-
+-- nodes rearrange every time !
 generateTransactions :: SimulationData -> Network -> Network
-generateTransactions td network = network{nodes = emptyNodes ++ updNonEmpty} where
-    (nonEmptyNodes, emptyNodes) = foldl (\(nens,ens) n ->
-            if selfBalance n > minFee*200 then (nens ++ [n], ens) else (nens, ens++[n])) ([],[]
-        ) (nodes network)
-    updNonEmpty = generateTransactionsForNodes td nonEmptyNodes network
-
-
-
-
-forgersList :: Timestamp -> Network -> (Network, [Node])
-forgersList tstamp sys  = (sys{nodes = forgers ++ nonForgers}, forgers) where
-    (nonForgers, forgers) = foldl (\(ons, newns) n -> let mbForged = forge n tstamp in case isJust mbForged of
-        True -> (ons, newns ++ [fromJust mbForged])
-        False -> (ons ++ [n], newns)) ([],[]) (nodes sys)
-
+generateTransactions sd network = network{nodes = emptyNodes ++ updNonEmpty} where
+    (nonEmptyNodes, emptyNodes) = partition (\n -> selfBalance n > minFee*200) (nodes network)
+    updNonEmpty = generateTransactionsForNodes sd nonEmptyNodes network
 
 
 networkForge :: SimulationData -> Network -> Network
-networkForge sd nw = let (nwf, forgers) = forgersList (timestamp sd) nw in
-    foldl (\nws frg -> sendBlockOut sd frg nws) nwf forgers
+networkForge sd nw = 
+    let forgers = map (forgeBlocks (timestamp sd)) (nodes nw) in
+    -- no need to filter forgers as sending blocks is performed through foldl ... blocks, where the latter can be [] 
+    foldl (sendBlocksOut sd) nw forgers 
 
 
 
@@ -299,14 +277,10 @@ addInvestorNode sd network = case timestamp sd of
 
 
 
-
-
 systemTransform :: SimulationData -> Network -> Network
 systemTransform sd network = networkForge sd $ propagateTransactions sd $ generateTransactions sd $
-            propagateLastBlock sd $ downloadBlocksNetwork sd $
+            propagateLastBlocks sd $ downloadBlocksNetwork sd $
             dropConnections sd $ generateConnections sd $ addNode sd $ addInvestorNode sd network
-
-
 
 
 goThrouhTimeline :: (SimulationData, Network) -> (SimulationData, Network)
