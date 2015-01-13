@@ -23,10 +23,10 @@ outChainNode node = outChain $ bestChain node
 
 
 outTxs :: Node -> String
-outTxs node = foldl(\s t -> concat [s, show t]) "" txs
+outTxs node = foldl (\s t -> concat [s, show t]) "" txs
     where
         chain = bestChain node
-        txs = concat $ map transactions $ tail chain
+        txs = concat $ map transactions $ chain
 
 outConnection :: Network -> String
 outConnection network = concat ps

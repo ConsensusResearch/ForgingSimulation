@@ -163,8 +163,9 @@ downloadBlocksFrom node otherNode network = updNetwork
                        let otherChainLength = length otherChain in   
                        let commonChainLength = length common in
                        let blocksNumToDl = min (otherChainLength - commonChainLength) maxBlocksFromPeer in                                           
-                       let newBlocks = drop (commonChainLength-1) $ take (commonChainLength+blocksNumToDl) otherChain in
-                       -- not very efficient drops and takes if rescan, easier to rescan (take x otherChain)
+                       let newBlocks = drop (commonChainLength-1) $ take (commonChainLength + blocksNumToDl) otherChain in
+                       -- not very efficient drops and takes if full rescan, easier to rescan (take x otherChain)
+                       -- now it is simplified to partial rescan
                        let modifiedNode = rescan node (makePairs newBlocks) in
                        updateNode modifiedNode network                                             
                      else network

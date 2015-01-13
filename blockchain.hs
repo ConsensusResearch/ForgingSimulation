@@ -113,18 +113,25 @@ type BlockChain = [Block]
 type BlockTree = Map.Map Block Block
 
 -- check if pb isn't included
-updateView :: Block -> Block -> LocalView -> LocalView
-updateView pb b view = if (Map.notMember b $ blockTree view) then 
+updateNodeView :: Block -> Block -> Node -> Node
+updateNodeView pb b node = let view = localView node in 
+                       if (Map.notMember b $ blockTree view) then 
                         if (Map.member pb $ blockTree view) || (isGenesis pb) then 
                            let prBal = Map.findWithDefault Map.empty pb $ blockBalances view in
                            let prTxs = Map.findWithDefault []        pb $ blockTransactions view in 
-                           view {blockTree      = Map.insert b pb $ blockTree view, 
+                           let updView = view {blockTree      = Map.insert b pb $ blockTree view, 
                               blockBalances     = Map.insert b (processBlock b prBal) $ blockBalances view,
-                              blockTransactions = Map.insert b (prTxs ++ (transactions b)) $ blockTransactions view}
+                              blockTransactions = Map.insert b (prTxs ++ (transactions b)) $ blockTransactions view} in
+                           let opb = addSortedBlock b (openBlocks node) in
+                           let bb' =  head opb in
+                           let oldbb = bestBlock node in
+                           let bb = if (totalDifficulty bb' >= totalDifficulty oldbb) then bb' else oldbb in
+                           node {localView = updView, pendingBlocks = (pb,b):(pendingBlocks node), 
+                                 openBlocks = opb, bestBlock = bb}
                         -- need to add more logic when prevBlock not found - try to download it or whatever   
-                        else view   
+                        else node   
                        else                        
-                        view 
+                        node 
                          
 
 cumulativeDifficulty :: BlockChain -> Double
@@ -175,17 +182,8 @@ processBlock block priorBalances = appliedWithFees
 -- changed (++) to (:) to save order of txs
 pushBlock :: Node -> Block -> Block -> Node
 pushBlock node pb bl = let view = localView node in
-      if Map.notMember bl (blockTree view) then        
-        let updView = updateView pb bl view in
-        --------------------------------------------------
-        -- do it more elegant
-        let opb = addSortedBlock bl (openBlocks node) in
-        let bb' =  head opb in
-        let oldbb = bestBlock node in
-        let bb = if (totalDifficulty bb' >= totalDifficulty oldbb) then bb' else oldbb in
-        node {localView = updView, pendingBlocks = (pb,bl):(pendingBlocks node), 
-                                   openBlocks = opb, 
-                                   bestBlock = bb}       
+      if Map.notMember bl (blockTree view) 
+      then updateNodeView pb bl node 
       else node                  
 
 pushBlocks :: Node -> [(Block, Block)] -> Node
