@@ -56,7 +56,7 @@ genesisBlock :: Block
 genesisBlock = block where
     amt = systemBalance `div` (length earlyInvestors)
     genesisTxs = map (\ acc -> Transaction {sender = godAccount, recipient = acc, amount = amt, fee = 0, txTimestamp = 0}) earlyInvestors
-    block = Block {transactions = genesisTxs,  blockTimestamp = 0, baseTarget = initialBaseTarget, totalDifficulty = 0.0, 
+    block = Block {transactions = genesisTxs,  blockTimestamp = 0, baseTarget = 10*initialBaseTarget, totalDifficulty = 0.0, 
                          generator = godAccount, generationSignature = B.replicate 64 0}
 
 
@@ -210,10 +210,13 @@ sendBlocksOut sd network node = resNetwork
                 blocks = pendingBlocks node
                 cons = outgoingConnections network node
                 clen = length cons
+                cons' = if clen == 0 then []
+                                     else [cons !! (fst $ randomR (0, clen - 1) $ nodeGen sd node)]
                 resNetwork' = foldl (\nw' otherNode -> 
                                       foldl (\nw ch -> updateNode (pushBlocks otherNode (makePairs ch)) nw) nw' (map (\bs -> nodeChain (snd bs) node) blocks) 
-                                      ) network cons                                                  
-                resNetwork = resNetwork' {nodes = map (\n -> n {pendingBlocks = []}) (nodes resNetwork')}
+                                      ) network cons'                                                  
+                resNetwork = if clen == 0 then resNetwork' 
+                             else resNetwork' {nodes = map (\n -> if n == node then n {pendingBlocks = []} else n) (nodes resNetwork')}
                        
 
 propagateLastBlocks :: SimulationData -> Network -> Network
@@ -227,10 +230,10 @@ propagateLastBlocks sd network = foldl (sendBlocksOut sd) network (nodes network
 
 generateTransactionsForNode :: SimulationData -> Node -> Network -> Node
 generateTransactionsForNode sd node network = 
-    if (timestamp sd < 3*(deadline sd) `div` 3) then
+    if (timestamp sd < 2*(deadline sd) `div` 3) then
         let gen = nodeGen sd node in
         let ns = nodes network in
-        let amt = fst $ randomR (1 , (selfBalance node) `div` 2) gen in
+        let amt = fst $ randomR (100000 , 1000000) gen in -- fst $ randomR (1 , (selfBalance node) `div` 2) gen in
         let rcp = account $ ns !! (fst $ randomR (0, length ns - 1) gen) in
         if (rcp /= account node) then 
           let tstamp = timestamp sd in
@@ -254,7 +257,7 @@ generateTransactions :: SimulationData -> Network -> Network
 --    (nonEmptyNodes, emptyNodes) = partition (\n -> selfBalance n > minFee*200) (nodes network)
 --    updNonEmpty = generateTransactionsForNodes sd nonEmptyNodes network
 generateTransactions sd network = network {nodes = ns} where
-                         ns = map (\n -> if (selfBalance n < 200*minFee) then n else
+                         ns = map (\n -> -- if (selfBalance n < 200*minFee) then n else
                                     let gen = nodeGen sd n in
                                     let r::Int = fst $ randomR (0, 10) gen in 
                                     case r of
@@ -266,8 +269,9 @@ networkForge :: SimulationData -> Network -> Network
 networkForge sd nw = 
     let forgers = map (forgeBlocks (timestamp sd)) (nodes nw) in
     let nwforged = foldl (\nw n -> updateNode n nw) nw forgers in
+    nwforged
     -- no need to filter forgers as sending blocks is performed through foldl ... blocks, where the latter can be [] 
-    foldl (sendBlocksOut sd) nwforged forgers
+    -- foldl (sendBlocksOut sd) nwforged forgers
    
 
 
@@ -292,10 +296,15 @@ addInvestorNode sd network = case timestamp sd of
 
 
 systemTransform :: SimulationData -> Network -> Network
-systemTransform sd network = networkForge sd $  propagateTransactions sd $  
-            generateTransactions sd $
-            propagateLastBlocks sd $ downloadBlocksNetwork sd $
-            dropConnections sd $ generateConnections sd $ addNode sd  $ addInvestorNode sd network
+systemTransform sd network = networkForge sd $  
+                             propagateTransactions sd $  
+                             generateTransactions sd $
+                             -- propagateLastBlocks sd $ 
+                             downloadBlocksNetwork sd $
+                             dropConnections sd $ 
+                             generateConnections sd $ 
+                             addNode sd $ 
+                             addInvestorNode sd network
 
 
 goThrouhTimeline :: (SimulationData, Network) -> (SimulationData, Network)
