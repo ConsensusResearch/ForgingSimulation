@@ -89,7 +89,7 @@ generatePK gen = randomByteString 32 gen
 
 
 accountByPK :: B.ByteString -> Account
-accountByPK pk = Account {publicKey = pk, tfdepth = 20}
+accountByPK pk = Account {publicKey = pk, tfdepth = tfDepth}
 
 generateAccount :: StdGen -> Account
 generateAccount gen = accountByPK $ generatePK gen
@@ -117,7 +117,7 @@ generateConnections sd network = network {connections = updCons} where
                 else idc
         ) idscons ns
 
-
+-- todo: move 60 to constants
 dropConnections :: SimulationData -> Network -> Network
 dropConnections sd network = case (timestamp sd) `mod` 60 of
             0 -> do
@@ -199,10 +199,7 @@ propagateTransactions sd network = foldl (\nws sndr -> sendTransactionsOut sd sn
            -- where senders = filter (\n -> (length $ pendingTxs n) > 0) (nodes network)
 
 
---if clen == 0 then network
---                    else 
---                        let otherNode = cons !! (fst $ randomR (0, clen - 1) $ nodeGen sd node) in 
-
+-- todo: regulate whether to send and whom to pending blocks
 sendBlocksOut :: SimulationData -> Network -> Node -> Network
 sendBlocksOut sd network node = resNetwork
             where
@@ -216,7 +213,7 @@ sendBlocksOut sd network node = resNetwork
                                       foldl (\nw ch -> updateNode (pushBlocks otherNode (makePairs ch)) nw) nw' (map (\bs -> nodeChain (snd bs) node) blocks) 
                                       ) network cons'                                                  
                 resNetwork = if clen == 0 then resNetwork' 
-                             else resNetwork' {nodes = map (\n -> if n == node then n {pendingBlocks = []} else n) (nodes resNetwork')}
+                             else updateNode node {pendingBlocks = []} resNetwork'
                        
 
 propagateLastBlocks :: SimulationData -> Network -> Network
@@ -227,7 +224,8 @@ propagateLastBlocks sd network = foldl (sendBlocksOut sd) network (nodes network
   --                  (timestamp sd - blockTimestamp lastBl) < 15 && generator lastBl /= account n
   --          ) (nodes network)
 
-
+--todo: regulate when to stop transactions to see the convergence (2/3 of deadline for now)
+--todo: regulate the range of transactions amount
 generateTransactionsForNode :: SimulationData -> Node -> Network -> Node
 generateTransactionsForNode sd node network = 
     if (timestamp sd < 2*(deadline sd) `div` 3) then
@@ -242,20 +240,18 @@ generateTransactionsForNode sd node network =
         else node
     else node
 
-generateTransactionsForNodes :: SimulationData -> [Node] -> Network -> [Node]
-generateTransactionsForNodes sd nonEmpty network = map (\n ->
-        let gen = nodeGen sd n in
-        let r::Int = fst $ randomR (0, 10) gen in 
-                case r of
-                1 -> generateTransactionsForNode sd n network                     
-                _ -> n) nonEmpty
+-- obsolete?
+--generateTransactionsForNodes :: SimulationData -> [Node] -> Network -> [Node]
+--generateTransactionsForNodes sd nonEmpty network = map (\n ->
+--        let gen = nodeGen sd n in
+--        let r::Int = fst $ randomR (0, 10) gen in 
+--                case r of
+--                1 -> generateTransactionsForNode sd n network                     
+--                _ -> n) nonEmpty
 
-
--- nodes rearrange every time !
+-- todo: regulate when to let account to send a transaction
+-- todo: move "10" to constants
 generateTransactions :: SimulationData -> Network -> Network
---generateTransactions sd network = network{nodes = emptyNodes ++ updNonEmpty} where
---    (nonEmptyNodes, emptyNodes) = partition (\n -> selfBalance n > minFee*200) (nodes network)
---    updNonEmpty = generateTransactionsForNodes sd nonEmptyNodes network
 generateTransactions sd network = network {nodes = ns} where
                          ns = map (\n -> -- if (selfBalance n < 200*minFee) then n else
                                     let gen = nodeGen sd n in
@@ -271,11 +267,8 @@ networkForge sd nw =
     let nwforged = foldl (\nw n -> updateNode n nw) nw forgers in
     nwforged
     -- no need to filter forgers as sending blocks is performed through foldl ... blocks, where the latter can be [] 
-    -- foldl (sendBlocksOut sd) nwforged forgers
    
-
-
-
+    
 --dirty hack :(
 addInvestorNode :: SimulationData -> Network -> Network
 addInvestorNode sd network = case timestamp sd of
@@ -294,7 +287,7 @@ addInvestorNode sd network = case timestamp sd of
             _ -> network
 
 
-
+-- propagateLastBlocks can be removed without the loss in convergence ATM ???
 systemTransform :: SimulationData -> Network -> Network
 systemTransform sd network = networkForge sd $  
                              propagateTransactions sd $  
