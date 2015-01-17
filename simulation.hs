@@ -4,7 +4,6 @@ module Blockchain.Simulation where
 import Blockchain.Structures
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Word as W
-import qualified Data.Random.List()
 import Data.Maybe
 import System.Random
 import qualified Data.Map as Map
