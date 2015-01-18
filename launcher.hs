@@ -3,8 +3,6 @@ module Main where
 
 import Blockchain.Simulation
 import Blockchain.Structures
-import System.Random
-import Control.Monad.State
 import qualified Data.Map as Map
 import System.Directory
 import Data.ConfigFile as ConfigFile
@@ -51,9 +49,8 @@ nodeBalances node ns = let bals =  map (accBalance node) $ map account ns in
 allBalances :: [Node] -> String
 allBalances nodes = concat $ map (\n -> nodeBalances n nodes ++ "\n") nodes   
 
-main  = do
+main = do
     putStrLn "Starting cryptocurrency simulation..."
-    gen <- newStdGen
 
     val <- ConfigFile.readfile ConfigFile.emptyCP "params.conf"
     let cp = forceEither val
@@ -78,7 +75,6 @@ main  = do
     mapM_ (\i -> writeFile (concat [outdir, "/chain", show i]) (outChainNode $ ns !! i)) [0..(length ns - 1)]
     mapM_ (\i -> writeFile (concat [outdir, "/txs", show i]) (outTxs $ ns !! i)) [0..(length ns - 1)]
     mapM_ (\i -> writeFile (concat [outdir, "/common", show i]) (outChain $ commonChain (bestChain $ ns !! i) (bestChain $ ns !! (i+1)))) [0..(length ns - 2)]
-
 
     putStrLn "Final balances(from self point of view):"
     putStrLn $ show $ map selfBalance ns
