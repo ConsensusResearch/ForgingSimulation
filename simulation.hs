@@ -103,33 +103,31 @@ addAccount :: Network -> Network
 addAccount _ = error "not impl"
 
 
-
 generateConnections :: SimulationData -> Network -> Network
-generateConnections sd network = network{connections = updCons} where
+generateConnections sd network = network {connections = updCons} where
     ns = nodes network
     nsCount = length ns
-    cons = connections network
-    updCons = foldl (\cs n -> let out = outgoingConnections network n in
+    idscons = connections network
+    updCons = foldl (\idc n -> let out = outgoingConnectionsIds network n in
             if (length out) < (min (maxConnectionsPerNode sd)  nsCount-1)
                 then
                     let gen = nodeGen sd n in
                     let rndNode = ns !! (fst $ randomR (0, nsCount - 1) gen) in
-                        if (nodeId rndNode /= nodeId n) && (not $ elem rndNode out)
-                            then Map.insert n (out++[rndNode]) cs
-                            else cs
-                else cs
-        ) cons ns
-
+                        if (rndNode /=  n) && (notElem (nodeId rndNode) out)
+                            then Map.insert n ((nodeId rndNode):out) idc
+                            else idc
+                else idc
+        ) idscons ns
 
 dropConnections :: SimulationData -> Network -> Network
 dropConnections sd network = case (timestamp sd) `mod` 60 of
             0 -> do
                 let cons = connections network in
-                    let updCons = foldl (\cs n -> let out = outgoingConnections network n in
-                            if (length out) > 10
+                    let updCons = foldl (\cs n -> let out = outgoingConnectionsIds network n in
+                            if (length out) > ((maxConnectionsPerNode sd) `div` 2)
                                 then Map.insert n (tail out) cs
                                 else cs ) cons (nodes network) in
-                    network{connections = updCons}
+                    network {connections = updCons}
             _ -> network
 
 

@@ -31,7 +31,7 @@ outConnection network = concat ps
     where
         cons = connections network
         ks = Map.keys cons
-        ps = map (\k -> concat [show $ nodeId $ k, " -> ", show $ map nodeId (Map.findWithDefault [] k cons), "\n "]) ks
+        ps = map (\k -> concat [show $ nodeId $ k, " -> ", show $ Map.findWithDefault [] k cons, "\n "]) ks
 
 commonChainLength :: Node -> Node -> Int
 commonChainLength n1 n2 = length $ commonChain (nodeChain $ localView n1)(nodeChain $ localView n2) []

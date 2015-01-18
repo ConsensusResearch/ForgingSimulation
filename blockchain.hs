@@ -131,7 +131,7 @@ addMoney diff acc blns = Map.insert acc ((Map.findWithDefault 0 acc blns) + diff
 
 
 applyTx :: Transaction -> Map.Map Account Int -> Map.Map Account Int
-applyTx tx blns = addMoney amt (recipient tx) $ addMoney (-amt) (sender tx) blns
+applyTx tx blns = addMoney amt (recipient tx) $ addMoney (-amt - (fee tx)) (sender tx) blns
     where
         amt = amount tx
 
@@ -241,22 +241,23 @@ commonChain chain1 chain2 common = case (chain1, chain2) of
         _ -> common
 
 
-
-
-
-
-
+-- Nodes are modifiyng !!! so map works wrong, changed [Node] to [Int]
 data Network =
     Network {
         nodes :: [Node],
-        connections :: Map.Map Node [Node] -- todo add latency(avg latency time), trust?
+        connections :: Map.Map Node [Int] -- todo add latency(avg latency time), trust?
     }  deriving (Show)
+
 
 systemBalance :: Int
 systemBalance = 1000000000
 
 outgoingConnections :: Network -> Node -> [Node]
-outgoingConnections system node = Map.findWithDefault [] node (connections system)
+outgoingConnections network node = let ids = Map.findWithDefault [] node (connections network) in
+                                   filter (\n -> elem (nodeId n) ids) (nodes network) 
+
+outgoingConnectionsIds :: Network -> Node -> [Int]
+outgoingConnectionsIds network node = Map.findWithDefault [] node (connections network)
 
 
 updateNode :: Node -> Network -> Network
