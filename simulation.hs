@@ -32,7 +32,7 @@ nodeGen :: SimulationData -> Node ->  StdGen
 nodeGen sd nd = mkStdGen $ (simulationId sd) * (timestamp sd + 1) * (nodeId nd)
 
 createNode :: Account -> Node
-createNode acc = Node {localView = genesisView, pendingTxs = [], pendingBlocks = [], openBlocks = [genesisBlock], bestBlock = genesisBlock, account = acc}
+createNode acc = Node {localView = genesisView, pendingTxs = [], pendingBlocks = [], openBlocks = [genesisBlock],  account = acc}
 
 rescan :: Node -> [(Block,Block)] -> Node
 rescan = pushBlocks 
@@ -62,7 +62,9 @@ genesisBlock = block where
 genesisView :: LocalView
 genesisView = LocalView {blockBalances = Map.singleton genesisBlock genBalances, 
                          blockTree = Map.empty, 
-                         blockTransactions = Map.singleton genesisBlock (transactions genesisBlock)}
+                         blockTransactions = Map.singleton genesisBlock (transactions genesisBlock),
+                         bestBlock = genesisBlock,
+                         diffThreshold = 0}
     where
         genBalances = processBlock genesisBlock initialBalances
         initialBalances = Map.singleton godAccount systemBalance
@@ -227,7 +229,7 @@ propagateLastBlocks sd network = foldl (sendBlocksOut sd) network (nodes network
 --todo: regulate the range of transactions amount
 generateTransactionsForNode :: SimulationData -> Node -> Network -> Node
 generateTransactionsForNode sd node network = 
-    if (timestamp sd < 2*(deadline sd) `div` 3) then
+    if (timestamp sd < 2*(deadline sd) `div` 3) && (selfBalance node > 1000000) then
         let gen = nodeGen sd node in
         let ns = nodes network in
         let amt = fst $ randomR (100000 , 1000000) gen in -- fst $ randomR (1 , (selfBalance node) `div` 2) gen in

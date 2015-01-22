@@ -10,7 +10,7 @@ import qualified Data.Map as Map
 type Timestamp = Int
 
 first8bytesAsNumber :: B.ByteString -> Integer
-first8bytesAsNumber bs =  fromIntegral $ BI.runGet BI.getWord64le first8 where first8 = B.take 8 bs
+first8bytesAsNumber bs =  fromIntegral $ BI.runGet BI.getWord64le $ B.take 8 bs
 
 -- tfdepth > 1 multibranch 
 --         = 1 singlebranch                                                                              
@@ -48,9 +48,7 @@ validate :: Transaction -> Bool
 validate _ = True
 
 data Block =
-    Block {
-      -- need to move to LocalView
-      -- allTransactions :: [Transaction],
+    Block {      
         transactions :: [Transaction],
         baseTarget :: Integer,
       -- theoretically need to move to LocalView  
@@ -82,22 +80,22 @@ maxBaseTarget = initialBaseTarget * (fromIntegral systemBalance)
 containsTx :: Block -> LocalView -> Transaction -> Bool
 containsTx block view tx = elem tx $ Map.findWithDefault [] block $ blockTransactions view
 
+calcHash :: [Integer] -> B.ByteString
+calcHash l = SHA.bytestringDigest $ SHA.sha256 $ B.pack $ map fromIntegral l 
+
 calcGenerationSignature :: Block -> Account -> B.ByteString
-calcGenerationSignature prevBlock acct = SHA.bytestringDigest $ SHA.sha256 $ B.append (generationSignature prevBlock) pk
-    where pk = publicKey acct
+calcGenerationSignature prevBlock acct = SHA.bytestringDigest $ SHA.sha256 $ B.append (generationSignature prevBlock) $ publicKey acct
 
 --correct this!
 difficultyFunction :: Integer -> Double
-difficultyFunction x = two64/(fromIntegral x)
+difficultyFunction x = 20e8/(fromIntegral x)
 
 formBlock :: Block -> Account -> Timestamp -> [Transaction] -> Block
 formBlock prevBlock gen timestamp txs =
     Block {transactions = newTxs, blockTimestamp = timestamp, 
            baseTarget = bt, totalDifficulty = td, generator = gen, 
            generationSignature = gs}
-    where newTxs = filter validate txs
-          -- move to the caller
-          -- newTxs = filter (\tx -> not $ containsTx prevBlock tx) newTxs'
+    where newTxs = filter validate txs          
           prevTarget = baseTarget prevBlock
           maxTarget = min (2*prevTarget)  maxBaseTarget
           minTarget = max (prevTarget `div` 2)  1
@@ -116,22 +114,23 @@ cumulativeDifficulty :: BlockChain -> Double
 cumulativeDifficulty chain = foldl (\cd b -> cd + (difficultyFunction $ baseTarget b)) 0 chain
 
 cumulativeNodeDifficulty :: Node -> Double
-cumulativeNodeDifficulty node = totalDifficulty $ bestBlock node
+cumulativeNodeDifficulty node = totalDifficulty $ bestBlock $ localView node
 
 -- type BlockTree = [BlockChain]
 
 data LocalView =
-    LocalView {
-        -- nodeChain :: BlockChain,
+    LocalView {      
         blockTree :: BlockTree,
+        diffThreshold :: Double,
         blockBalances :: Map.Map Block (Map.Map Account Int),
+        bestBlock :: Block,
         -- all the transactions from the genesis, better do it as Block->Transaction mapping?
         blockTransactions :: Map.Map Block [Transaction]
     } deriving (Show)
 
 
 accountBalance :: LocalView -> Block -> Account -> Int
-accountBalance view b acc = Map.findWithDefault 0 acc (Map.findWithDefault Map.empty b (blockBalances view))
+accountBalance view b acc = Map.findWithDefault 0 acc $ Map.findWithDefault Map.empty b $ blockBalances view
 
 effectiveBalance :: LocalView -> Block -> Account -> Int
 effectiveBalance view b acc = accountBalance view b acc -- todo: simplification, no 1440 blocks waiting for now
@@ -155,21 +154,26 @@ processBlock block priorBalances = appliedWithFees
         fees = sum (map fee txs)
         appliedWithFees = addMoney fees (generator block) txApplied
 
+deltaThreshold = 7
+
 pushBlock :: Node -> Block -> Block -> Node
 pushBlock node pb b =  let view = localView node in 
                        if (Map.notMember b $ blockTree view) then 
                         if (Map.member pb $ blockTree view) || (isGenesis pb) then 
                            let prBal = Map.findWithDefault Map.empty pb $ blockBalances view in
                            let prTxs = Map.findWithDefault []        pb $ blockTransactions view in 
-                           let updView = view {blockTree      = Map.insert b pb $ blockTree view, 
-                              blockBalances     = Map.insert b (processBlock b prBal) $ blockBalances view,
-                              blockTransactions = Map.insert b (prTxs ++ (transactions b)) $ blockTransactions view} in
                            let opb = addSortedBlock b (openBlocks node) in
                            let bb' = head opb in
-                           let oldbb = bestBlock node in
-                           let bb = if (totalDifficulty bb' >= totalDifficulty oldbb) then bb' else oldbb in
+                           let updView = view {blockTree      = Map.insert b pb $ blockTree view, 
+                              blockBalances     = Map.insert b (processBlock b prBal) $ blockBalances view,
+                              blockTransactions = Map.insert b (prTxs ++ (transactions b)) $ blockTransactions view,
+                              bestBlock = let oldbb = bestBlock view in
+                                          if (totalDifficulty bb' >= totalDifficulty oldbb) then bb' else oldbb,
+                              diffThreshold = let olddt = diffThreshold view in
+                                              if (totalDifficulty bb' - olddt >= deltaThreshold) then olddt + deltaThreshold
+                                                                                                 else olddt} in                                              
                            node {localView = updView, pendingBlocks = (pb,b):(pendingBlocks node), 
-                                 openBlocks = opb, bestBlock = bb}
+                                 openBlocks = opb}
                         -- need to add more logic when prevBlock not found - try to download it or whatever   
                         else node   
                        else node                   
@@ -184,8 +188,6 @@ data Node =
         pendingTxs :: [Transaction],
         openBlocks :: [Block],
         pendingBlocks :: [(Block,Block)],
-        -- maybe move to view?
-        bestBlock :: Block,
         account :: Account -- simplification - one account per node
         --isForging :: Bool - simplification - always on for now
     }  deriving (Show)
@@ -211,14 +213,13 @@ processIncomingBlock node pb block = updNode
             True -> pushBlock node pb block
             False -> node
 
-selfBalance :: Node -> Int
-selfBalance node = let v = localView node in 
-                   accountBalance v (bestBlock node) (account node)
-
 
 accBalance :: Node -> Account -> Int
 accBalance node acc = let v = localView node in 
-                      accountBalance v (bestBlock node) acc
+                      accountBalance v (bestBlock v) acc
+
+selfBalance :: Node -> Int
+selfBalance node = accBalance node (account node)
 
 calculateHit :: Block -> Account -> Integer
 calculateHit prevBlock acc = fromIntegral $ first8bytesAsNumber $ calcGenerationSignature prevBlock acc
@@ -267,6 +268,7 @@ forgeBlocks ts node = let acc = account node in
                       let view = localView node in
                       let opb = openBlocks node in                      
                       let (blocks, rb) = splitBlocks (tfdepth acc) opb in                             
+                      let bs = filter (\b -> totalDifficulty b >= diffThreshold view) blocks in
                       let node' = node {openBlocks = []} in
                       foldl (\n pb -> forgeBlock pb n ts) node' blocks
                       
@@ -283,9 +285,8 @@ nodeChain b node = let view = localView node in
 
                       
 bestChain :: Node -> BlockChain
-bestChain node = let view = localView node in
-                 let tree = blockTree view in
-                 treeChain (bestBlock node) tree
+bestChain node = let view = localView node in                
+                 treeChain (bestBlock view) (blockTree view)
               
             
 -- removed accumulator common to reduce (++) operations
