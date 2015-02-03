@@ -12,14 +12,9 @@ type Timestamp = Int
 first8bytesAsNumber :: B.ByteString -> Integer
 first8bytesAsNumber bs =  fromIntegral $ BI.runGet BI.getWord64le $ B.take 8 bs
 
--- tfdepth > 1 multibranch 
---         = 1 singlebranch                                                                              
---         = 0 not forging                                                                               
---         < 0 full multibranch (warning! - exponential growth of resources wasted)
 data Account =
     Account {
-        publicKey :: B.ByteString,
-        tfdepth :: Int
+        publicKey :: B.ByteString
     }
 
 instance Show Account where show acc = show $ accountId acc
@@ -180,8 +175,13 @@ pushBlock node pb b =  let view = localView node in
 pushBlocks :: Node -> [(Block, Block)] -> Node
 pushBlocks = foldl (\n (pb,b) -> pushBlock n pb b)
 
+-- tfdepth > 1 multibranch
+--         = 1 singlebranch
+--         = 0 not forging
+--         < 0 full multibranch (warning! - exponential growth of resources wasted)
 data Node =
     Node {
+        tfdepth :: Int,
         localView :: LocalView,
         -- renamed to exclude inappropriate usage
         pendingTxs :: [Transaction],
@@ -261,7 +261,7 @@ forgeBlocks ::  Timestamp -> Node -> Node
 forgeBlocks ts node = let acc = account node in                    
                       let view = localView node in
                       let opb = openBlocks node in                      
-                      let (blocks, rb) = splitBlocks (tfdepth acc) opb in                             
+                      let (blocks, rb) = splitBlocks (tfdepth node) opb in
                       let bs = filter (\b -> totalDifficulty b >= diffThreshold view) blocks in
                       let node' = node {openBlocks = []} in
                       foldl (\n pb -> forgeBlock pb n ts) node' blocks

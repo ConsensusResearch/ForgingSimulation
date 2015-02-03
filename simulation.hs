@@ -32,11 +32,10 @@ nodeGen :: SimulationData -> Node ->  StdGen
 nodeGen sd nd = mkStdGen $ (simulationId sd) * (timestamp sd + 1) * (nodeId nd)
 
 createNode :: Account -> Node
-createNode acc = Node {localView = genesisView, pendingTxs = [], pendingBlocks = [], openBlocks = [genesisBlock],  account = acc}
+createNode acc = Node {tfdepth = tfDepth, localView = genesisView, pendingTxs = [], pendingBlocks = [], openBlocks = [genesisBlock],  account = acc}
 
 rescan :: Node -> [(Block,Block)] -> Node
-rescan = pushBlocks 
-                              --{localView = genesisView, pendingTxs = [], pendingBlocks = [], openBlocks = [genesisBlock], bestBlock = genesisBlock} 
+rescan = pushBlocks
 
 
 -----------Bootstrapping functions----------------------
@@ -48,7 +47,7 @@ earlyInvestors = map (\i -> generateAccount $ mkStdGen i) [0..19]
 
 godAccount :: Account
 godAccount = Account {publicKey = B.pack[18, 89, -20, 33, -45, 26, 48, -119, -115, 124, -47, 96, -97, -128, -39, 102,
-                                        -117, 71, 120, -29, -39, 126, -108, 16, 68, -77, -97, 12, 68, -46, -27, 27], tfdepth = 0}
+                                        -117, 71, 120, -29, -39, 126, -108, 16, 68, -77, -97, 12, 68, -46, -27, 27]}
 
 
 genesisBlock :: Block
@@ -90,7 +89,7 @@ generatePK gen = randomByteString 32 gen
 
 
 accountByPK :: B.ByteString -> Account
-accountByPK pk = Account {publicKey = pk, tfdepth = tfDepth}
+accountByPK pk = Account {publicKey = pk}
 
 generateAccount :: StdGen -> Account
 generateAccount gen = accountByPK $ generatePK gen
