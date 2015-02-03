@@ -11,3 +11,5 @@ cabal.sandbox.config
 cabal.config
 .idea/
 *.iml
+*.md
+launcher
