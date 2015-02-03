@@ -15,7 +15,7 @@ first8bytesAsNumber bs =  fromIntegral $ BI.runGet BI.getWord64le $ B.take 8 bs
 -- tfdepth > 1 multibranch 
 --         = 1 singlebranch                                                                              
 --         = 0 not forging                                                                               
---         < 0 full multibranch (please do not use - exponential growth)                                                                       
+--         < 0 full multibranch (warning! - exponential growth of resources wasted)
 data Account =
     Account {
         publicKey :: B.ByteString,
@@ -51,7 +51,7 @@ data Block =
     Block {      
         transactions :: [Transaction],
         baseTarget :: Integer,
-      -- theoretically need to move to LocalView  
+      -- theoretically it needs to be moved to LocalView
         totalDifficulty :: Double,
         generator :: Account,
         generationSignature :: B.ByteString,
@@ -116,7 +116,6 @@ cumulativeDifficulty chain = foldl (\cd b -> cd + (difficultyFunction $ baseTarg
 cumulativeNodeDifficulty :: Node -> Double
 cumulativeNodeDifficulty node = totalDifficulty $ bestBlock $ localView node
 
--- type BlockTree = [BlockChain]
 
 data LocalView =
     LocalView {      
@@ -132,10 +131,11 @@ data LocalView =
 accountBalance :: LocalView -> Block -> Account -> Int
 accountBalance view b acc = Map.findWithDefault 0 acc $ Map.findWithDefault Map.empty b $ blockBalances view
 
+-- todo: simplification, no 1440 blocks waiting for now
 effectiveBalance :: LocalView -> Block -> Account -> Int
-effectiveBalance view b acc = accountBalance view b acc -- todo: simplification, no 1440 blocks waiting for now
+effectiveBalance view b acc = accountBalance view b acc
 
-addMoney ::  Int -> Account ->  Map.Map Account Int -> Map.Map Account Int
+addMoney ::  Int -> Account -> Map.Map Account Int -> Map.Map Account Int
 addMoney diff acc blns = let oldBalance = Map.findWithDefault 0 acc blns in 
                          Map.insert acc (oldBalance + diff) blns
 
@@ -154,7 +154,6 @@ processBlock block priorBalances = appliedWithFees
         fees = sum (map fee txs)
         appliedWithFees = addMoney fees (generator block) txApplied
 
-deltaThreshold = 7
 
 pushBlock :: Node -> Block -> Block -> Node
 pushBlock node pb b =  let view = localView node in 
@@ -198,11 +197,6 @@ nodeId node = accountId $ account node
 instance Eq Node where n1 == n2  = nodeId n1 == nodeId n2
 instance Ord Node where compare n1 n2 = compare (nodeId n1) (nodeId n2)
 
---lastNodeBlock :: Node -> Block
---lastNodeBlock nd = last $ nodeChain $ localView nd
-
---nodeChainLength :: Node -> Int
---nodeChainLength nd = length $ nodeChain $ localView nd
 
 processIncomingBlock :: Node -> Block -> Block -> Node
 processIncomingBlock node pb block = updNode
@@ -317,14 +311,6 @@ updateNode nd network = network {nodes = ns}
             ndId = nodeId nd
             ns = map (\n -> if (nodeId n == ndId) then nd else n) (nodes network)
 
---updateNode nd network = network {nodes = ns}
---    where
-      -- (==) for nodes as Ids 
---        ns = map (\n -> if (n == nd) then nd else n) (nodes network)
-
-
---blockTree :: Network -> BlockTree
---blockTree sys = error "not impl"
 
 -- todo: define canonical blockchain and implement it's extraction from blocktree of a system
 canonicalBlockchain :: Network -> Maybe BlockChain

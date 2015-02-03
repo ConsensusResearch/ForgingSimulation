@@ -16,12 +16,16 @@ two64 :: Double
 two64 = 2**64
 
 maxBlocksFromPeer :: Int
-maxBlocksFromPeer = 10*1440
+maxBlocksFromPeer = 719
 
 
 -- tfdepth > 1 finite multibranch 
 --         = 1 singlebranch                                                                              
 --         = 0 not forging                                                                               
---         < 0 full multibranch (please do not use - exponential growth) 
+--         < 0 full multibranch (warning! - exponential growth of resources wasted)
 tfDepth :: Int
 tfDepth = 20
+
+
+
+deltaThreshold = 7
