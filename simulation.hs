@@ -5,8 +5,8 @@ import Constants
 import Blockchain.Structures
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Word as W
-import Data.Maybe
-import Data.List
+import Data.Maybe()
+import Data.List()
 import System.Random
 import qualified Data.Map as Map
 
@@ -194,10 +194,8 @@ sendTransactionsOut sd node network = case randomNeighbour sd node network of
                     Nothing -> network
 
 
---it's probably no need to filter 
 propagateTransactions :: SimulationData -> Network ->  Network
 propagateTransactions sd network = foldl (\nws sndr -> sendTransactionsOut sd sndr nws) network (nodes network)
-           -- where senders = filter (\n -> (length $ pendingTxs n) > 0) (nodes network)
 
 
 -- todo: regulate whether to send and whom to pending blocks
@@ -219,11 +217,6 @@ sendBlocksOut sd network node = resNetwork
 
 propagateLastBlocks :: SimulationData -> Network -> Network
 propagateLastBlocks sd network = foldl (sendBlocksOut sd) network (nodes network)
-  --  where
-  --      senders = filter (\n ->
-  --              let lastBl = lastNodeBlock n in
-  --                  (timestamp sd - blockTimestamp lastBl) < 15 && generator lastBl /= account n
-  --          ) (nodes network)
 
 --todo: regulate when to stop transactions to see the convergence (2/3 of deadline for now)
 --todo: regulate the range of transactions amount
@@ -240,15 +233,6 @@ generateTransactionsForNode sd node network =
             node {pendingTxs = tx:(pendingTxs node)}
         else node
     else node
-
--- obsolete?
---generateTransactionsForNodes :: SimulationData -> [Node] -> Network -> [Node]
---generateTransactionsForNodes sd nonEmpty network = map (\n ->
---        let gen = nodeGen sd n in
---        let r::Int = fst $ randomR (0, 10) gen in 
---                case r of
---                1 -> generateTransactionsForNode sd n network                     
---                _ -> n) nonEmpty
 
 -- todo: regulate when to let account to send a transaction
 -- todo: move "10" to constants

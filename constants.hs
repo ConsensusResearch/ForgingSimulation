@@ -28,4 +28,5 @@ tfDepth = 20
 
 
 
+deltaThreshold :: Double
 deltaThreshold = 7
