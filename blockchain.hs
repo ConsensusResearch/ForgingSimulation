@@ -26,8 +26,6 @@ accountId :: Account -> Int
 accountId acc = fromIntegral $ first8bytesAsNumber $ publicKey acc
 
 
-
-
 data Transaction =
     Transaction {
         sender :: Account,
@@ -87,9 +85,6 @@ formBlock prevBlock gen timestamp txs =
 
 blockId :: Block -> Int
 blockId block = (blockTimestamp block) + (fromIntegral $ first8bytesAsNumber $ generationSignature block)
-
-
-
 
 
 
@@ -159,8 +154,6 @@ pushBlocks bls node = foldl (\n bl -> pushBlock bl n) node bls
 
 
 
-
-
 data Node =
     Node {
         localView :: LocalView,
@@ -224,10 +217,6 @@ forge node ts = case checkhit of
         effBalance = effectiveBalance view acct
         checkhit = verifyHit hit lastbl ts effBalance
         generatedBlock = formBlock lastbl acct ts (unconfirmedTxs node)
-
-
-
-
 
 
 
